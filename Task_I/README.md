@@ -52,14 +52,36 @@ Each worker accumulates into its own `partial_sum`. The main thread reads those 
 Run the program several times on the Termux device and record the output here:
 
 ```text
-Paste the actual Termux output here.
+Single-threaded sum = 18010371126344528  time = 0.012102 s
+Strided (4 threads) sum = 18010371126344528  time = 0.037458 s
+Contiguous (4 threads) sum = 18010371126344528  time = 0.011998 s
+Single-threaded sum = 18010371126344528  time = 0.011535 s
+Strided (4 threads) sum = 18010371126344528  time = 0.041397 s
+Contiguous (4 threads) sum = 18010371126344528  time = 0.011457 s
+Single-threaded sum = 18010371126344528  time = 0.011466 s
+Strided (4 threads) sum = 18010371126344528  time = 0.038905 s
+Contiguous (4 threads) sum = 18010371126344528  time = 0.011061 s
+Single-threaded sum = 18010371126344528  time = 0.010912 s
+Strided (4 threads) sum = 18010371126344528  time = 0.037723 s
+Contiguous (4 threads) sum = 18010371126344528  time = 0.012638 s
+Single-threaded sum = 18010371126344528  time = 0.012104 s
+Strided (4 threads) sum = 18010371126344528  time = 0.041494 s
+Contiguous (4 threads) sum = 18010371126344528  time = 0.013450 s
 ```
 
-A single run is not enough to establish a reliable performance ranking because scheduling, thermal state, background work, and CPU frequency can change the result.
+A single run is not enough to establish a reliable performance ranking because scheduling, thermal state, background work, and CPU frequency can change the result. The medians of these five runs were:
+
+| Strategy | Median time |
+|---|---:|
+| Single-threaded | 0.011535 s |
+| Strided, 4 threads | 0.038905 s |
+| Contiguous, 4 threads | 0.011998 s |
+
+The single-threaded strategy was the fastest in this sample. The contiguous strategy was approximately as fast, but its median was about 4% slower. The strided strategy was about 3.4 times slower than the single-threaded median. This is a valid result: the workload is memory-bound and the fixed cost of creating and joining four threads can be larger than the benefit of parallel execution on this device.
 
 ## Expected explanation
 
-The contiguous strategy usually performs best because each worker reads a sequential, non-overlapping range. Sequential access uses spatial locality and allows the hardware prefetcher to bring nearby values into cache efficiently.
+The contiguous strategy has the best threaded memory-access pattern because each worker reads a sequential, non-overlapping range. Sequential access uses spatial locality and allows the hardware prefetcher to bring nearby values into cache efficiently. It did not beat the single-threaded version in this sample because the array sum is limited by memory throughput and the threaded path also pays thread creation and joining overhead.
 
 The strided strategy makes all four workers touch the same cache lines, while each worker uses only some of the values in each line. This wastes fetched data and gives the memory system a less convenient access pattern. Because the array is read-only, this should not be described as false sharing: false sharing requires different threads to write different values on the same cache line.
 

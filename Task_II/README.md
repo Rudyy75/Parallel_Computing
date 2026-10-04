@@ -49,5 +49,20 @@ The queue operations contain no mutex and no internal retry loop. Each `enqueue`
 Paste the actual Termux output below after running the program:
 
 ```text
-Paste the producer/consumer log and final success line here.
+[producer] enqueued 0
+[producer] enqueued 1
+[producer] enqueued 2
+...
+[consumer] dequeued 34
+[consumer] dequeued 35
+[producer] enqueued 36
+...
+[producer] enqueued 99
+[consumer] dequeued 96
+[consumer] dequeued 97
+[consumer] dequeued 98
+[consumer] dequeued 99
+transferred 100 items in FIFO order
 ```
+
+The complete Termux run showed every producer value from `0` through `99` and every consumer value from `0` through `99`. The consumer verified the order internally, and the final success line was printed. Producer and consumer lines appeared in scheduling-dependent bursts, which is expected for two concurrent threads.
