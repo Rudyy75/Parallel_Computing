@@ -4,6 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef EGL_OPENGL_ES3_BIT_KHR
+#define EGL_OPENGL_ES3_BIT_KHR 0x0040
+#endif
+
 static void fail_egl(const char *operation) {
     fprintf(stderr, "%s failed: EGL error 0x%04x\n",
             operation, eglGetError());
