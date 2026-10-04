@@ -1,0 +1,69 @@
+#version 310 es
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer InputCells {
+    uint cells_in[];
+};
+
+layout(std430, binding = 1) writeonly buffer OutputCells {
+    uint cells_out[];
+};
+
+uniform uint grid_size;
+uniform uint epoch;
+
+uint random_value(uint value) {
+    value ^= value >> 16;
+    value *= 0x7feb352du;
+    value ^= value >> 15;
+    value *= 0x846ca68bu;
+    value ^= value >> 16;
+    return value;
+}
+
+void main() {
+    uvec2 position = gl_GlobalInvocationID.xy;
+    if (position.x >= grid_size || position.y >= grid_size) {
+        return;
+    }
+
+    int x = int(position.x);
+    int y = int(position.y);
+    int size = int(grid_size);
+    uint index = position.y * grid_size + position.x;
+    uint current = cells_in[index];
+    uint next = current;
+
+    if (current == 1u) {
+        next = 2u;
+    } else if (current == 0u) {
+        bool neighbor_is_burning = false;
+
+        for (int offset_y = -1; offset_y <= 1; offset_y++) {
+            for (int offset_x = -1; offset_x <= 1; offset_x++) {
+                if (offset_x == 0 && offset_y == 0) {
+                    continue;
+                }
+
+                int neighbor_x = x + offset_x;
+                int neighbor_y = y + offset_y;
+                if (neighbor_x >= 0 && neighbor_x < size &&
+                    neighbor_y >= 0 && neighbor_y < size) {
+                    uint neighbor_index = uint(neighbor_y) * grid_size +
+                                           uint(neighbor_x);
+                    if (cells_in[neighbor_index] == 1u) {
+                        neighbor_is_burning = true;
+                    }
+                }
+            }
+        }
+
+        uint random_sample = random_value(index + epoch * 0x9e3779b9u);
+        if (neighbor_is_burning && random_sample % 100u < 15u) {
+            next = 1u;
+        }
+    }
+
+    cells_out[index] = next;
+}
