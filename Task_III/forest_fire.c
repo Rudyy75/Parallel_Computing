@@ -253,7 +253,6 @@ int main(int argc, char **argv) {
     input_cells = calloc(cell_count, sizeof(*input_cells));
     if (input_cells == NULL) {
         perror("calloc");
-        free(input_cells);
         return EXIT_FAILURE;
     }
     input_cells[(size / 2) * size + size / 2] = BURNING;
