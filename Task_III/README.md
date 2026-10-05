@@ -120,41 +120,45 @@ directory.
 
 ## Observed results
 
-The program was run on the same Android device for four grid sizes:
+The program was cross-compiled on Windows using Android NDK r30's
+`aarch64-linux-android24-clang`, linked against the NDK's `libEGL` and
+`libGLESv3`, and then copied to and executed on an Android device through
+Termux. The cross-compiled binaries were verified with four grid sizes:
 
 | Grid size | Epochs until extinction |
 |---:|---:|
-| 16 | 7 |
-| 32 | 4 |
-| 64 | 1 |
-| 128 | 3 |
+| 16 | 3 |
+| 32 | 8 |
+| 64 | 8 |
+| 128 | 8 |
 
 The larger-grid runs produced:
 
 ```text
 M=32
-Fire extinguished after 4 epochs for M=32
+Fire extinguished after 8 epochs for M=32
 M=64
-Fire extinguished after 1 epochs for M=64
+Fire extinguished after 8 epochs for M=64
 M=128
-Fire extinguished after 3 epochs for M=128
+Fire extinguished after 8 epochs for M=128
 ```
 
-The number of epochs is not expected to increase monotonically with `M`. The initial state contains one burning cell, and the 15% ignition rule is probabilistic. A fire can die out immediately or spread to new cells before extinguishing.
+For `M > 20`, the host batches up to eight dispatches before reading the
+burning counter. Therefore, the reported result is checked at batch
+boundaries rather than after every individual epoch. This reduces
+CPU-GPU synchronization overhead; it does not change the simulation rules.
+The number of epochs is not expected to increase monotonically with `M`. The
+initial state contains one burning cell, and the 15% ignition rule is
+probabilistic. A fire can die out immediately or spread to new cells before
+extinguishing.
 
 The complete small-grid run for `M=16` printed every epoch and ended with:
-
-The complete small-grid run printed every epoch and ended with:
 
 ```text
 Epoch 1, burning cells: 2
 Epoch 2, burning cells: 3
-Epoch 3, burning cells: 3
-Epoch 4, burning cells: 3
-Epoch 5, burning cells: 5
-Epoch 6, burning cells: 1
-Epoch 7, burning cells: 0
-Fire extinguished after 7 epochs for M=16
+Epoch 3, burning cells: 0
+Fire extinguished after 3 epochs for M=16
 ```
 
 This shows that the number of burning cells does not need to decrease monotonically: new healthy neighbors may ignite before the existing fire disappears. The termination condition is specifically that the count reaches zero.
