@@ -95,9 +95,28 @@ Use `ANDROID_API` to select another supported API level:
 ANDROID_API=29 sh cross_compile.sh
 ```
 
-The resulting binaries use Android's system EGL and GLESv2 libraries at
+The resulting binaries use Android's system EGL and GLESv3 libraries at
 runtime. Copy `egl_probe` and `forest_fire` to an Android device or Termux
 environment before running them.
+
+On a Windows PC, use the PowerShell script instead. It selects the NDK's
+`windows-x86_64` LLVM toolchain and produces Android ARM64 binaries:
+
+```powershell
+cd C:\path\to\Task_III
+.\cross_compile.ps1 -Ndk C:\path\to\android-ndk -Api 24
+```
+
+If PowerShell blocks local scripts, enable them for the current terminal only:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\cross_compile.ps1 -Ndk C:\path\to\android-ndk -Api 24
+```
+
+Copy the two generated binaries and `forest_fire.comp` to Termux. The shader
+file is required at runtime because the host loads it from the current
+directory.
 
 ## Observed results
 

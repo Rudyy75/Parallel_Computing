@@ -25,7 +25,8 @@ forest_fire: forest_fire.c forest_fire.comp
 cross:
 	$(MAKE) clean
 	$(MAKE) CC="$(CROSS_CC)" CPPFLAGS="$(CPPFLAGS) --sysroot=$(SYSROOT)" \
-		CFLAGS="$(CFLAGS)" LDFLAGS="--sysroot=$(SYSROOT)" all
+		CFLAGS="$(CFLAGS)" LDFLAGS="--sysroot=$(SYSROOT)" \
+		LDLIBS="-lEGL -lGLESv3" all
 
 clean:
 	rm -f $(TARGETS)
