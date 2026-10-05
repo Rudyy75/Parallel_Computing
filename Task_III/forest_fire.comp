@@ -30,16 +30,16 @@ uint random_value(uint value) {
 }
 
 void main() {
-    const uvec2 local = gl_LocalInvocationID.xy;
-    const uvec2 group_origin = gl_WorkGroupID.xy * 16u;
-    const uint local_index = local.y * 16u + local.x;
+    uvec2 local = gl_LocalInvocationID.xy;
+    uvec2 group_origin = gl_WorkGroupID.xy * 16u;
+    uint local_index = local.y * 16u + local.x;
 
     /* Load the 16x16 tile and its one-cell halo cooperatively. */
     for (uint halo_index = local_index; halo_index < 324u; halo_index += 256u) {
-        const uint halo_x = halo_index % 18u;
-        const uint halo_y = halo_index / 18u;
-        const int global_x = int(group_origin.x + halo_x) - 1;
-        const int global_y = int(group_origin.y + halo_y) - 1;
+        uint halo_x = halo_index % 18u;
+        uint halo_y = halo_index / 18u;
+        int global_x = int(group_origin.x + halo_x) - 1;
+        int global_y = int(group_origin.y + halo_y) - 1;
         if (global_x >= 0 && global_y >= 0 &&
             global_x < int(grid_size) && global_y < int(grid_size)) {
             tile[halo_y][halo_x] =
@@ -53,19 +53,19 @@ void main() {
     }
     barrier();
 
-    const uvec2 position = gl_GlobalInvocationID.xy;
-    const bool in_bounds = position.x < grid_size && position.y < grid_size;
+    uvec2 position = gl_GlobalInvocationID.xy;
+    bool in_bounds = position.x < grid_size && position.y < grid_size;
     uint next = 2u;
 
     if (in_bounds) {
-        const uint index = position.y * grid_size + position.x;
-        const uint current = tile[local.y + 1u][local.x + 1u];
+        uint index = position.y * grid_size + position.x;
+        uint current = tile[local.y + 1u][local.x + 1u];
         next = current;
 
         if (current == 1u) {
             next = 2u;
         } else if (current == 0u) {
-            const uint neighbor_is_burning =
+            uint neighbor_is_burning =
                 uint(tile[local.y][local.x] == 1u) |
                 uint(tile[local.y][local.x + 1u] == 1u) |
                 uint(tile[local.y][local.x + 2u] == 1u) |
@@ -74,7 +74,7 @@ void main() {
                 uint(tile[local.y + 2u][local.x] == 1u) |
                 uint(tile[local.y + 2u][local.x + 1u] == 1u) |
                 uint(tile[local.y + 2u][local.x + 2u] == 1u);
-            const uint random_sample =
+            uint random_sample =
                 random_value(index + epoch * 0x9e3779b9u);
             /* 0.15 * 2^32, avoiding an integer division/modulo. */
             if (neighbor_is_burning != 0u && random_sample < 644245094u) {
