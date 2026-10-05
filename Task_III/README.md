@@ -38,7 +38,20 @@ One compute invocation processes one grid cell. The shader reads from one shader
 
 This ping-pong design is necessary because every cell in an epoch must read the complete previous state. Updating the same buffer in place would allow one invocation to observe another invocation's already-updated value and would change the cellular-automaton rules.
 
-The compute workgroup is `16 x 16`. For a grid of size `M`, the host dispatches:
+The compute workgroup is `16 x 16`. Each workgroup cooperatively loads its
+`18 x 18` tile, including a one-cell halo, into shared memory. The eight
+neighbor checks then hit on-chip shared memory instead of issuing up to eight
+global-memory reads per cell. This removes the large amount of redundant
+neighbor traffic present in the first version.
+
+Burning-cell counts are accumulated in shared memory once per workgroup and
+then added to a one-element GPU buffer. For grids larger than 20x20, the host
+maps only that four-byte counter rather than stalling on a full-grid readback.
+Small grids still map the complete output so every epoch can be printed.
+The ignition threshold compares directly against `0.15 * 2^32`, avoiding an
+integer modulo operation in every healthy cell.
+
+For a grid of size `M`, the host dispatches:
 
 ```text
 ceil(M / 16) x ceil(M / 16) x 1
@@ -57,13 +70,34 @@ cd Task_III
 ./forest_fire 16
 ```
 
-For larger grids, the program prints only the epoch count and avoids printing the complete matrix:
+For larger grids, the program prints only the epoch count and avoids printing the complete matrix. These runs dispatch eight epochs before reading the GPU burning counter, reducing CPU/GPU synchronization points while preserving the ping-pong buffer ordering:
 
 ```sh
 ./forest_fire 32
 ./forest_fire 64
 ./forest_fire 128
 ```
+
+### Cross-compiling with the Android NDK
+
+On a Linux host, install the Android NDK and set `ANDROID_NDK_HOME` to its
+root. The default target is `aarch64-linux-android` with API level 24:
+
+```sh
+export ANDROID_NDK_HOME=/path/to/android-ndk
+sh cross_compile.sh
+```
+
+The script selects the NDK LLVM toolchain and passes its sysroot to `make`.
+Use `ANDROID_API` to select another supported API level:
+
+```sh
+ANDROID_API=29 sh cross_compile.sh
+```
+
+The resulting binaries use Android's system EGL and GLESv2 libraries at
+runtime. Copy `egl_probe` and `forest_fire` to an Android device or Termux
+environment before running them.
 
 ## Observed results
 

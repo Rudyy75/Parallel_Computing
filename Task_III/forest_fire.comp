@@ -10,8 +10,15 @@ layout(std430, binding = 1) writeonly buffer OutputCells {
     uint cells_out[];
 };
 
+layout(std430, binding = 2) buffer BurningCount {
+    uint burning_count;
+};
+
 uniform uint grid_size;
 uniform uint epoch;
+
+shared uint tile[18][18];
+shared uint workgroup_burning_count;
 
 uint random_value(uint value) {
     value ^= value >> 16;
@@ -23,47 +30,65 @@ uint random_value(uint value) {
 }
 
 void main() {
-    uvec2 position = gl_GlobalInvocationID.xy;
-    if (position.x >= grid_size || position.y >= grid_size) {
-        return;
+    const uvec2 local = gl_LocalInvocationID.xy;
+    const uvec2 group_origin = gl_WorkGroupID.xy * 16u;
+    const uint local_index = local.y * 16u + local.x;
+
+    /* Load the 16x16 tile and its one-cell halo cooperatively. */
+    for (uint halo_index = local_index; halo_index < 324u; halo_index += 256u) {
+        const uint halo_x = halo_index % 18u;
+        const uint halo_y = halo_index / 18u;
+        const int global_x = int(group_origin.x + halo_x) - 1;
+        const int global_y = int(group_origin.y + halo_y) - 1;
+        if (global_x >= 0 && global_y >= 0 &&
+            global_x < int(grid_size) && global_y < int(grid_size)) {
+            tile[halo_y][halo_x] =
+                cells_in[uint(global_y) * grid_size + uint(global_x)];
+        } else {
+            tile[halo_y][halo_x] = 2u;
+        }
     }
+    if (local_index == 0u) {
+        workgroup_burning_count = 0u;
+    }
+    barrier();
 
-    int x = int(position.x);
-    int y = int(position.y);
-    int size = int(grid_size);
-    uint index = position.y * grid_size + position.x;
-    uint current = cells_in[index];
-    uint next = current;
+    const uvec2 position = gl_GlobalInvocationID.xy;
+    const bool in_bounds = position.x < grid_size && position.y < grid_size;
+    uint next = 2u;
 
-    if (current == 1u) {
-        next = 2u;
-    } else if (current == 0u) {
-        bool neighbor_is_burning = false;
+    if (in_bounds) {
+        const uint index = position.y * grid_size + position.x;
+        const uint current = tile[local.y + 1u][local.x + 1u];
+        next = current;
 
-        for (int offset_y = -1; offset_y <= 1; offset_y++) {
-            for (int offset_x = -1; offset_x <= 1; offset_x++) {
-                if (offset_x == 0 && offset_y == 0) {
-                    continue;
-                }
-
-                int neighbor_x = x + offset_x;
-                int neighbor_y = y + offset_y;
-                if (neighbor_x >= 0 && neighbor_x < size &&
-                    neighbor_y >= 0 && neighbor_y < size) {
-                    uint neighbor_index = uint(neighbor_y) * grid_size +
-                                           uint(neighbor_x);
-                    if (cells_in[neighbor_index] == 1u) {
-                        neighbor_is_burning = true;
-                    }
-                }
+        if (current == 1u) {
+            next = 2u;
+        } else if (current == 0u) {
+            const uint neighbor_is_burning =
+                uint(tile[local.y][local.x] == 1u) |
+                uint(tile[local.y][local.x + 1u] == 1u) |
+                uint(tile[local.y][local.x + 2u] == 1u) |
+                uint(tile[local.y + 1u][local.x] == 1u) |
+                uint(tile[local.y + 1u][local.x + 2u] == 1u) |
+                uint(tile[local.y + 2u][local.x] == 1u) |
+                uint(tile[local.y + 2u][local.x + 1u] == 1u) |
+                uint(tile[local.y + 2u][local.x + 2u] == 1u);
+            const uint random_sample =
+                random_value(index + epoch * 0x9e3779b9u);
+            /* 0.15 * 2^32, avoiding an integer division/modulo. */
+            if (neighbor_is_burning != 0u && random_sample < 644245094u) {
+                next = 1u;
             }
         }
 
-        uint random_sample = random_value(index + epoch * 0x9e3779b9u);
-        if (neighbor_is_burning && random_sample % 100u < 15u) {
-            next = 1u;
+        cells_out[index] = next;
+        if (next == 1u) {
+            atomicAdd(workgroup_burning_count, 1u);
         }
     }
-
-    cells_out[index] = next;
+    barrier();
+    if (local_index == 0u) {
+        atomicAdd(burning_count, workgroup_burning_count);
+    }
 }

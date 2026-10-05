@@ -237,6 +237,7 @@ int main(int argc, char **argv) {
     GLuint shader;
     GLuint program;
     GLuint buffers[2];
+    GLuint count_buffer;
     GLint grid_size_location;
     GLint epoch_location;
     GLuint input_buffer = 0;
@@ -244,6 +245,8 @@ int main(int argc, char **argv) {
     size_t epochs = 0;
     size_t burning_count = 1;
     const size_t maximum_epochs = 100000;
+    const size_t batch_size = size <= 20 ? 1 : 8;
+    uint32_t zero_count = 0;
 
     if (size == 0 || size > 4096) {
         fprintf(stderr, "grid size must be between 1 and 4096\n");
@@ -271,6 +274,11 @@ int main(int argc, char **argv) {
     glBufferData(GL_SHADER_STORAGE_BUFFER, (GLsizeiptr)byte_count,
                  NULL, GL_DYNAMIC_COPY);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, buffers[1]);
+    glGenBuffers(1, &count_buffer);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, count_buffer);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(zero_count),
+                 &zero_count, GL_DYNAMIC_COPY);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, count_buffer);
 
     glUseProgram(program);
     grid_size_location = glGetUniformLocation(program, "grid_size");
@@ -278,44 +286,71 @@ int main(int argc, char **argv) {
     glUniform1ui(grid_size_location, (GLuint)size);
 
     while (burning_count != 0 && epochs < maximum_epochs) {
-        uint32_t *output_cells;
+        const size_t epochs_to_dispatch =
+            (maximum_epochs - epochs < batch_size) ?
+            maximum_epochs - epochs : batch_size;
 
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, buffers[input_buffer]);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, buffers[output_buffer]);
-        glUniform1ui(epoch_location, (GLuint)epochs);
-        glDispatchCompute((GLuint)((size + LOCAL_SIZE - 1) / LOCAL_SIZE),
-                          (GLuint)((size + LOCAL_SIZE - 1) / LOCAL_SIZE), 1);
+        for (size_t batch_epoch = 0;
+             batch_epoch < epochs_to_dispatch;
+             batch_epoch++) {
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, count_buffer);
+            glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI,
+                              GL_RED_INTEGER, GL_UNSIGNED_INT, &zero_count);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0,
+                             buffers[input_buffer]);
+            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1,
+                             buffers[output_buffer]);
+            glUniform1ui(epoch_location, (GLuint)epochs);
+            glDispatchCompute(
+                (GLuint)((size + LOCAL_SIZE - 1) / LOCAL_SIZE),
+                (GLuint)((size + LOCAL_SIZE - 1) / LOCAL_SIZE), 1);
+            epochs++;
+
+            /* Make this epoch's output visible to the next dispatch. */
+            glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+            {
+                const GLuint temporary = input_buffer;
+                input_buffer = output_buffer;
+                output_buffer = temporary;
+            }
+        }
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
-        glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[output_buffer]);
-        output_cells = glMapBufferRange(
-            GL_SHADER_STORAGE_BUFFER, 0, (GLsizeiptr)byte_count,
-            GL_MAP_READ_BIT);
-        if (output_cells == NULL) {
-            fail_gl("glMapBufferRange");
-        }
-
-        epochs++;
-        burning_count = count_burning(output_cells, cell_count);
-        if (size <= 20) {
+        if (batch_size == 1) {
+            uint32_t *output_cells;
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, buffers[input_buffer]);
+            output_cells = glMapBufferRange(
+                GL_SHADER_STORAGE_BUFFER, 0, (GLsizeiptr)byte_count,
+                GL_MAP_READ_BIT);
+            if (output_cells == NULL) {
+                fail_gl("glMapBufferRange");
+            }
+            burning_count = count_burning(output_cells, cell_count);
             printf("Epoch %zu, burning cells: %zu\n", epochs, burning_count);
             print_grid(output_cells, size);
-        }
-
-        if (glUnmapBuffer(GL_SHADER_STORAGE_BUFFER) != GL_TRUE) {
-            fail_gl("glUnmapBuffer");
-        }
-
-        {
-            const GLuint temporary = input_buffer;
-            input_buffer = output_buffer;
-            output_buffer = temporary;
+            if (glUnmapBuffer(GL_SHADER_STORAGE_BUFFER) != GL_TRUE) {
+                fail_gl("glUnmapBuffer");
+            }
+        } else {
+            uint32_t *gpu_burning_count;
+            glBindBuffer(GL_SHADER_STORAGE_BUFFER, count_buffer);
+            gpu_burning_count = glMapBufferRange(
+                GL_SHADER_STORAGE_BUFFER, 0, sizeof(uint32_t),
+                GL_MAP_READ_BIT);
+            if (gpu_burning_count == NULL) {
+                fail_gl("glMapBufferRange");
+            }
+            burning_count = *gpu_burning_count;
+            if (glUnmapBuffer(GL_SHADER_STORAGE_BUFFER) != GL_TRUE) {
+                fail_gl("glUnmapBuffer");
+            }
         }
     }
 
     if (burning_count != 0) {
         fprintf(stderr, "simulation exceeded %zu epochs\n", maximum_epochs);
         glDeleteBuffers(2, buffers);
+        glDeleteBuffers(1, &count_buffer);
         glDeleteProgram(program);
         destroy_context(&gpu);
         free(input_cells);
@@ -325,6 +360,7 @@ int main(int argc, char **argv) {
     printf("Fire extinguished after %zu epochs for M=%zu\n", epochs, size);
 
     glDeleteBuffers(2, buffers);
+    glDeleteBuffers(1, &count_buffer);
     glDeleteProgram(program);
     destroy_context(&gpu);
     free(input_cells);
