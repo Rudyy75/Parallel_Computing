@@ -294,8 +294,8 @@ int main(int argc, char **argv) {
              batch_epoch < epochs_to_dispatch;
              batch_epoch++) {
             glBindBuffer(GL_SHADER_STORAGE_BUFFER, count_buffer);
-            glClearBufferData(GL_SHADER_STORAGE_BUFFER, GL_R32UI,
-                              GL_RED_INTEGER, GL_UNSIGNED_INT, &zero_count);
+            glBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, sizeof(zero_count),
+                            &zero_count);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0,
                              buffers[input_buffer]);
             glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1,
